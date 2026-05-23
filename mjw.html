@@ -1,0 +1,430 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mahjong Ways - Custom Bet & External Balance</title>
+    <style>
+        :root {
+            --bg-dark: #0a0502;
+            --gold: #ffd700;
+            --tile-bg: #fdfbf7;
+            --tile-border: #dcd7cd;
+            --tile-shadow: #bca075;
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; }
+
+        body {
+            background-color: var(--bg-dark);
+            color: #fffdec;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            display: flex; justify-content: center; align-items: center; min-height: 100vh;
+        }
+
+        .game-container {
+            width: 100%; max-width: 412px; height: 100vh; max-height: 850px;
+            background: linear-gradient(180deg, #2d1307 0%, #160702 100%);
+            border: 2px solid #3d1c0b; position: relative;
+            display: flex; flex-direction: column; overflow: hidden;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.8);
+        }
+
+        .game-container.free-spins-active {
+            border-color: #ffaa00;
+            box-shadow: 0 0 20px #ff5500;
+        }
+
+        /* Hệ số nhân */
+        .multiplier-wrapper { background: rgba(0, 0, 0, 0.4); padding: 8px 12px; border-bottom: 1px solid #4a230f; }
+        .multiplier-bar { display: flex; justify-content: space-between; gap: 6px; }
+        .mult-item {
+            flex: 1; background: #2d160b; border: 1px solid #5d3119; color: #8a644e;
+            text-align: center; padding: 4px 0; font-size: 14px; font-weight: bold; border-radius: 4px;
+        }
+        .mult-item.active {
+            background: linear-gradient(180deg, #ffe875 0%, #d49b00 100%); color: #3a1500;
+            border-color: #fff2a3; box-shadow: 0 0 8px rgba(255, 215, 0, 0.6);
+        }
+
+        /* Khung Lưới Game */
+        .board-screen {
+            flex: 1; background: radial-gradient(circle, #52130d 0%, #1c0503 100%);
+            padding: 10px; display: flex; align-items: center; justify-content: center;
+        }
+        .game-container.free-spins-active .board-screen {
+            background: radial-gradient(circle, #730000 0%, #260000 100%);
+        }
+        
+        .grid-layout {
+            display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px;
+            width: 100%; max-width: 380px; background: rgba(0, 0, 0, 0.6);
+            padding: 8px; border: 2px solid #8f5c23; border-radius: 6px;
+            height: 380px; overflow: hidden;
+        }
+        .grid-column { display: flex; flex-direction: column; gap: 6px; height: 100%; justify-content: flex-start; }
+
+        /* Thiết kế quân bài mạt chược - Chứa ảnh */
+        .mahjong-tile {
+            background: linear-gradient(180deg, var(--tile-bg) 0%, #ece6da 100%);
+            border: 1px solid var(--tile-border); border-radius: 4px;
+            width: 100%; height: 82px; display: flex; align-items: center; justify-content: center;
+            position: relative; padding: 6px;
+            box-shadow: 0 3px 0 var(--tile-shadow), 0 4px 5px rgba(0,0,0,0.4);
+            animation: dropDown 0.3s cubic-bezier(0.25, 1, 0.5, 1) forwards;
+        }
+
+        .tile-img {
+            width: 100%; height: 100%; object-fit: contain;
+            filter: drop-shadow(0px 2px 2px rgba(0,0,0,0.3));
+        }
+
+        .mahjong-tile::before {
+            content: ''; position: absolute; bottom: -3px; left: -1px;
+            width: calc(100% + 2px); height: 3px; background: #006837; border-radius: 0 0 4px 4px; z-index: -1;
+        }
+
+        .mahjong-tile.gold-mode { background: linear-gradient(180deg, #fffbc9 0%, #ffd043 100%); border-color: #ffb700; box-shadow: 0 3px 0 #b87a00, 0 0 8px rgba(255, 215, 0, 0.8); }
+        .mahjong-tile.gold-mode::before { background: #b87a00; }
+        .mahjong-tile.wild-mode { background: linear-gradient(135deg, #ffd700 0%, #ff6200 100%); border-color: #ff9d00; box-shadow: 0 3px 0 #9e3100, 0 0 12px #ff6200; }
+        .mahjong-tile.wild-mode::before { background: #9e3100; }
+        .mahjong-tile.scatter-mode { background: linear-gradient(180deg, #ff9e9e 0%, #ff1a1a 100%); border-color: #ff0000; box-shadow: 0 3px 0 #9c0000, 0 0 10px rgba(255,0,0,0.6); }
+        .mahjong-tile.scatter-mode::before { background: #9c0000; }
+
+        @keyframes dropDown {
+            0% { transform: translateY(-380px); opacity: 0; }
+            100% { transform: translateY(0); opacity: 1; }
+        }
+
+        .mahjong-tile.explode-out { animation: explode 0.35s ease-out forwards; }
+        @keyframes explode {
+            0% { transform: scale(1); filter: brightness(1); }
+            50% { transform: scale(1.1); filter: brightness(1.6); opacity: 1; }
+            100% { transform: scale(0.2); opacity: 0; }
+        }
+
+        /* Điều khiển trung tâm */
+        .action-control-panel { background: #170702; padding: 10px 15px; display: flex; flex-direction: column; align-items: center; gap: 8px; }
+        .spin-core-area { display: flex; justify-content: center; align-items: center; height: 90px; }
+        
+        .main-spin-button {
+            width: 80px; height: 80px; background: linear-gradient(180deg, #ffe259 0%, #ffa751 100%);
+            border: 4px solid #fffdec; border-radius: 50%; display: flex; justify-content: center; align-items: center;
+            cursor: pointer; box-shadow: 0 4px 15px rgba(0, 0, 0, 0.6);
+        }
+        .game-container.free-spins-active .main-spin-button {
+            background: linear-gradient(180deg, #ff5500 0%, #ff0000 100%);
+        }
+        .main-spin-button:active { transform: scale(0.92); }
+        .main-spin-button:disabled { filter: grayscale(0.8); }
+
+        .win-box-overlay { background: linear-gradient(180deg, #2b1105 0%, #140500 100%); border: 1px solid #6e3916; border-radius: 20px; padding: 4px 30px; text-align: center; min-width: 180px; }
+        .win-box-overlay .label { font-size: 10px; color: #a37c65; text-transform: uppercase; }
+        .win-box-overlay .value { font-size: 18px; font-weight: bold; color: #ffea78; }
+
+        /* Stats đáy */
+        .dashboard-stats { background: #0d0401; padding: 12px 20px; display: flex; justify-content: space-between; }
+        .stat-element { display: flex; flex-direction: column; }
+        .stat-title { font-size: 11px; color: #7a5d4c; }
+        .stat-number { font-size: 15px; font-weight: bold; color: #ffffff; }
+
+        /* Thanh cấu hình cược và nút tăng giảm */
+        .config-options-bar { background: #080200; padding: 8px 16px; display: flex; justify-content: space-between; align-items: center; }
+        .bet-controller { display: flex; align-items: center; gap: 8px; background: #1a0b04; padding: 4px 8px; border-radius: 6px; border: 1px solid #421d0a; }
+        .bet-btn {
+            background: linear-gradient(180deg, #7a3e19 0%, #421d0a 100%);
+            color: #fffdec; border: 1px solid #914d22; width: 24px; height: 24px;
+            font-size: 16px; font-weight: bold; border-radius: 4px; cursor: pointer;
+            display: flex; align-items: center; justify-content: center;
+        }
+        .bet-btn:active { transform: scale(0.9); }
+        .bet-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+        .bet-display-text { font-size: 13px; color: #ffea78; font-weight: bold; min-width: 65px; text-align: center; }
+
+        .auto-toggle-container { display: flex; align-items: center; gap: 6px; font-size: 12px; color: #7a5d4c;}
+    </style>
+</head>
+<body>
+
+<div class="game-container" id="main-frame">
+    <div class="multiplier-wrapper">
+        <div class="multiplier-bar" id="mult-bar-ui">
+            <div class="mult-item active" id="m-1">x1</div>
+            <div class="mult-item" id="m-2">x2</div>
+            <div class="mult-item" id="m-3">x3</div>
+            <div class="mult-item" id="m-5">x5</div>
+        </div>
+    </div>
+
+    <div class="board-screen">
+        <div class="grid-layout" id="slot-grid">
+            <div class="grid-column" id="col-0"></div>
+            <div class="grid-column" id="col-1"></div>
+            <div class="grid-column" id="col-2"></div>
+            <div class="grid-column" id="col-3"></div>
+            <div class="grid-column" id="col-4"></div>
+        </div>
+    </div>
+
+    <div class="action-control-panel">
+        <div class="spin-core-area">
+            <button class="main-spin-button" id="spin-btn" onclick="triggerSpinAction()">
+                <svg style="width:32px; height:32px; fill:#4a1a02;" viewBox="0 0 24 24">
+                    <path d="M12 4V1L8 5l4 4V6c3.31 0 6 2.69 6 6 0 1.01-.25 1.97-.7 2.8l1.46 1.46C19.54 15.03 20 13.57 20 12c0-4.42-3.58-8-8-8zm0 14c-3.31 0-6-2.69-6-6 0-1.01.25-1.97.7-2.8L5.24 7.74C4.46 8.97 4 10.43 4 12c0 4.42 3.58 8 8 8v3l4-4-4-4v3z"/>
+                </svg>
+            </button>
+        </div>
+        <div class="win-box-overlay">
+            <div class="label" id="win-label-text">Thắng</div>
+            <div class="value" id="win-text">0.00</div>
+        </div>
+    </div>
+
+    <div class="dashboard-stats">
+        <div class="stat-element"><span class="stat-title">Số dư</span><span class="stat-number" id="balance-text">100,000.00</span></div>
+        <div class="stat-element" style="text-align:right;"><span class="stat-title" id="mode-status-label">Trạng thái</span><span class="stat-number" id="free-spin-count-text">Bình Thường</span></div>
+    </div>
+
+    <div class="config-options-bar">
+        <div class="bet-controller">
+            <button class="bet-btn" id="bet-minus-btn" onclick="adjustBetLevel(-1)">-</button>
+            <span class="bet-display-text" id="bet-level-display">0.4</span>
+            <button class="bet-btn" id="bet-plus-btn" onclick="adjustBetLevel(1)">+</button>
+        </div>
+        
+        <div class="auto-toggle-container">
+            <span>Tự động quay</span>
+            <input type="checkbox" id="auto-checkbox" onchange="toggleAutoStatus()">
+        </div>
+    </div>
+</div>
+
+<script>
+    const tilePool = [
+        { code: 'phat', url: 'https://upload.wikimedia.org/wikipedia/commons/2/20/MJw4-.svg', payouts: { 3: 50, 4: 100, 5: 500 } },
+        { code: 'trung', url: 'https://upload.wikimedia.org/wikipedia/commons/6/6c/MJw3-.svg', payouts: { 3: 40, 4: 80, 5: 300 } },
+        { code: 'bach', url: 'https://upload.wikimedia.org/wikipedia/commons/d/d1/MJw5-.svg', payouts: { 3: 30, 4: 60, 5: 150 } },
+        { code: '1van', url: 'https://upload.wikimedia.org/wikipedia/commons/7/75/MJw1w-.svg', payouts: { 3: 15, 4: 30, 5: 80 } },
+        { code: '9van', url: 'https://upload.wikimedia.org/wikipedia/commons/c/cb/MJw9w-.svg', payouts: { 3: 10, 4: 20, 5: 60 } },
+        { code: '1dong', url: 'https://upload.wikimedia.org/wikipedia/commons/a/a2/MJt1-.svg', payouts: { 3: 8, 4: 15, 5: 40 } }
+    ];
+    
+    const wildUrl = 'https://upload.wikimedia.org/wikipedia/commons/2/25/Ganesha_Gold.png';
+    const scatterUrl = 'https://upload.wikimedia.org/wikipedia/commons/8/8e/MJw1-.svg';
+
+    // 1. CÀI ĐẶT SỐ DƯ DEMO BAN ĐẦU: 100,000
+    let currentBalance = 1000000; // Mặc định nếu chạy độc lập
+    
+    // 2. MẢNG MỨC CƯỢC THEO YÊU CẦU CỦA BẠN
+    const betList = [0.4, 0.8, 1.6, 3.2, 6.4, 12.8, 25.6, 51.2, 102.4, 204.8, 409.6, 819.2, 1638.4, 2000, 4000, 8000, 16000, 32000, 40000, 80000];
+    let currentBetIndex = 0; // Mặc định bắt đầu từ mốc 0.4
+
+    let currentMultiplier = 1;
+    let isGameRunning = false;
+    let isAutoEnabled = false;
+    let isFreeSpinsMode = false;
+    let remainingFreeSpins = 0;
+    let totalWinInFreeSpins = 0;
+    let matrixData = [[], [], [], [], []];
+
+    // --- CƠ CHẾ KẾT NỐI SỐ DƯ TỪ CỔNG NẠP BÊN NGOÀI (SAU NÀY CỦA BẠN) ---
+    window.addEventListener("message", function(event) {
+        // Nhận dữ liệu số dư được truyền từ trang HTML nạp tiền mẹ
+        if (event.data && event.data.type === "UPDATE_BALANCE") {
+            currentBalance = parseFloat(event.data.value);
+            document.getElementById('balance-text').innerText = currentBalance.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2});
+        }
+    });
+
+    // Hàm khởi tạo độc lập tự động check URL xem có số dư nạp vào không, nếu không lấy 100,000.00 làm Demo
+    function checkInitialBalance() {
+        const urlParams = new URLSearchParams(window.location.search);
+        const externalBalance = urlParams.get('balance');
+        if (externalBalance !== null) {
+            currentBalance = parseFloat(externalBalance);
+        } else {
+            currentBalance = 100000.00; // Đặt đúng 100,000 số tiền demo ban đầu
+        }
+        document.getElementById('balance-text').innerText = currentBalance.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2});
+        updateBetUI();
+    }
+
+    function initGame() {
+        checkInitialBalance();
+        for (let c = 0; c < 5; c++) {
+            const col = document.getElementById(`col-${c}`);
+            col.innerHTML = '';
+            matrixData[c] = [];
+            for (let r = 0; r < 4; r++) {
+                let tile = createRandomTileData(c);
+                matrixData[c].push(tile);
+                col.appendChild(renderTileDOM(tile));
+            }
+        }
+    }
+    initGame();
+
+    // 3. HÀM TĂNG GIẢM MỨC CƯỢC
+    function adjustBetLevel(direction) {
+        if (isGameRunning || isFreeSpinsMode) return; // Đang quay không cho đổi cược
+        
+        currentBetIndex += direction;
+        if (currentBetIndex < 0) currentBetIndex = 0;
+        if (currentBetIndex >= betList.length) currentBetIndex = betList.length - 1;
+        
+        updateBetUI();
+    }
+
+    function updateBetUI() {
+        let activeBet = betList[currentBetIndex];
+        // Định dạng hiển thị: Nếu nhỏ hơn 2000 thì hiện thập phân, lớn thì hiện số nguyên
+        document.getElementById('bet-level-display').innerText = activeBet >= 2000 ? activeBet.toLocaleString() : activeBet.toFixed(1);
+        
+        // Bật tắt độ sáng nút bấm dựa theo giới hạn mảng
+        document.getElementById('bet-minus-btn').disabled = (currentBetIndex === 0);
+        document.getElementById('bet-plus-btn').disabled = (currentBetIndex === betList.length - 1);
+    }
+
+    function createRandomTileData(colIndex) {
+        let isScatter = Math.random() < 0.05; 
+        if (isScatter) {
+            return {
+                id: Math.random().toString(36).substr(2, 9),
+                code: 'scatter', url: scatterUrl, gold: false, wild: false, scatter: true
+            };
+        }
+        let isWild = Math.random() < 0.03; 
+        let isGold = !isWild && (colIndex >= 1 && colIndex <= 3) && Math.random() < 0.18;
+        let sample = tilePool[Math.floor(Math.random() * tilePool.length)];
+        return {
+            id: Math.random().toString(36).substr(2, 9),
+            code: sample.code, url: sample.url, gold: isGold, wild: isWild, scatter: false, payouts: sample.payouts
+        };
+    }
+
+    function renderTileDOM(tileData) {
+        const div = document.createElement('div');
+        div.className = `mahjong-tile`;
+        div.setAttribute('data-id', tileData.id);
+        if (tileData.gold) div.classList.add('gold-mode');
+        if (tileData.wild) div.classList.add('wild-mode');
+        if (tileData.scatter) div.classList.add('scatter-mode');
+        const img = document.createElement('img');
+        img.className = 'tile-img';
+        img.src = tileData.wild ? wildUrl : tileData.url;
+        div.appendChild(img);
+        return div;
+    }
+
+    function toggleAutoStatus() {
+        isAutoEnabled = document.getElementById('auto-checkbox').checked;
+        if (isAutoEnabled && !isGameRunning) triggerSpinAction();
+    }
+
+    async function triggerSpinAction() {
+        if (isGameRunning) return;
+        isGameRunning = true;
+        document.getElementById('spin-btn').disabled = true;
+        document.getElementById('bet-minus-btn').disabled = true;
+        document.getElementById('bet-plus-btn').disabled = true;
+
+        let selectedBet = betList[currentBetIndex];
+
+        if (!isFreeSpinsMode) {
+            if (currentBalance < selectedBet) {
+                alert("Không đủ số dư!");
+                isGameRunning = false;
+                document.getElementById('spin-btn').disabled = false;
+                document.getElementById('auto-checkbox').checked = false;
+                updateBetUI();
+                return;
+            }
+            currentBalance -= selectedBet;
+            document.getElementById('balance-text').innerText = currentBalance.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2});
+            document.getElementById('win-text').innerText = "0.00";
+        } else {
+            remainingFreeSpins--;
+            updateFreeSpinsUI();
+        }
+        
+        modifyMultiplierSystem(1);
+
+        for(let c=0; c<5; c++) {
+            document.getElementById(`col-${c}`).innerHTML = '';
+            matrixData[c] = [];
+        }
+        await pauseTimeline(150);
+        await processCascadingLoop();
+    }
+
+    async function processCascadingLoop() {
+        let selectedBet = betList[currentBetIndex];
+        for (let c = 0; c < 5; c++) {
+            const col = document.getElementById(`col-${c}`);
+            while (matrixData[c].length < 4) {
+                let newTile = createRandomTileData(c);
+                matrixData[c].unshift(newTile);
+                col.insertBefore(renderTileDOM(newTile), col.firstChild);
+            }
+        }
+
+        await pauseTimeline(350);
+
+        let scatterCount = 0;
+        for (let c = 0; c < 5; c++) {
+            scatterCount += matrixData[c].filter(t => t.scatter).length;
+        }
+
+        let winSymbols = checkWaysToWin();
+
+        if (winSymbols.length > 0) {
+            let roundPayout = 0;
+
+            winSymbols.forEach(win => {
+                let comboMultiplier = win.matchCounts.reduce((a, b) => a * b, 1);
+                let basePayout = win.payouts[win.length]; 
+                
+                // Tiền thưởng tính dựa theo hệ số bảng cược nhân với Đơn vị tỷ lệ của Mức cược hiện tại
+                roundPayout += (basePayout * (selectedBet / 10)) * comboMultiplier * currentMultiplier;
+                markWinningTiles(win.code, win.length);
+            });
+
+            if (isFreeSpinsMode) {
+                totalWinInFreeSpins += roundPayout;
+            } else {
+                currentBalance += roundPayout;
+            }
+            
+            document.getElementById('win-text').innerText = Math.floor(isFreeSpinsMode ? totalWinInFreeSpins : roundPayout).toLocaleString(undefined, {minimumFractionDigits: 2});
+            document.getElementById('balance-text').innerText = currentBalance.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2});
+
+            await pauseTimeline(400);
+            handleMatrixCrush();
+            shiftMultiplierNext();
+
+            await pauseTimeline(150);
+            await processCascadingLoop();
+
+        } else {
+            if (scatterCount >= 3) {
+                let newGainedSpins = 12 + (scatterCount - 3) * 2;
+                remainingFreeSpins += newGainedSpins;
+                
+                if (!isFreeSpinsMode) {
+                    isFreeSpinsMode = true;
+                    totalWinInFreeSpins = 0;
+                    document.getElementById('main-frame').classList.add('free-spins-active');
+                    document.getElementById('win-label-text').innerText = "Tổng Thắng FS";
+                    alert(`🎉 BONUS! Nhận ngay ${newGainedSpins} Vòng Quay Miễn Phí!`);
+                } else {
+                    alert(`🔥 RETRIGGER! Thêm +${newGainedSpins} vòng quay!`);
+                }
+                updateFreeSpinsUI();
+            }
+
+            if (isFreeSpinsMode && remainingFreeSpins > 0) {
+                await pauseTimeline(800);
+                isGameRunning = false;
+                triggerSpinAction();
+            } else {
+                if (isFreeSpinsM
